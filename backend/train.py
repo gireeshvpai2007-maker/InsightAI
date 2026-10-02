@@ -1,13 +1,32 @@
 import os
-import pandas as pd
 import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
 
-from utils import clean_dataset
+from utils import load_dataset
+from model_selection import (
+    detect_task,
+    compare_models,
+    get_models
+)
+from evaluation import (
+    evaluate_regression,
+    evaluate_classification
+)
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+DATASET_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "datasets",
+    "house_price.csv"
+)
+
+TARGET_COLUMN = "Price"
 
 MODEL_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
@@ -15,72 +34,61 @@ MODEL_DIR = os.path.join(
 )
 
 
-def train_model(dataset_path, target_column="Price"):
-    """
-    Train a Linear Regression model on a CSV dataset.
-    """
+# ============================================================
+# LOAD DATASET
+# ============================================================
 
-    # =========================
-    # 1. LOAD DATASET
-    # =========================
+df = load_dataset(DATASET_PATH)
 
-    print("\n========== LOADING DATASET ==========")
+print("\n========== DATASET ==========")
+print("Rows:", df.shape[0])
+print("Columns:", df.shape[1])
 
-    df = pd.read_csv(dataset_path)
 
-    print(f"Dataset shape: {df.shape}")
-    print("\nFirst 5 rows:")
-    print(df.head())
+if TARGET_COLUMN not in df.columns:
 
-    # =========================
-    # 2. DATA CLEANING
-    # =========================
+    raise ValueError(
+        f"Target column '{TARGET_COLUMN}' not found."
+    )
 
-    print("\n========== DATA CLEANING ==========")
 
-    print("Missing values before cleaning:")
-    print(df.isnull().sum())
+# ============================================================
+# SEPARATE FEATURES AND TARGET
+# ============================================================
 
-    print("\nDuplicate rows:", df.duplicated().sum())
+X = df.drop(
+    columns=[TARGET_COLUMN]
+)
 
-    df = clean_dataset(df)
+y = df[TARGET_COLUMN]
 
-    print("\nDataset shape after cleaning:", df.shape)
 
-    # =========================
-    # 3. VALIDATE TARGET
-    # =========================
+# ============================================================
+# DETECT TASK
+# ============================================================
 
-    if target_column not in df.columns:
-        raise ValueError(
-            f"Target column '{target_column}' not found.\n"
-            f"Available columns: {list(df.columns)}"
-        )
+task = detect_task(y)
 
-    # =========================
-    # 4. PREPARE FEATURES
-    # =========================
+print("\n========== TASK DETECTION ==========")
+print("Target:", TARGET_COLUMN)
+print("Task:", task)
 
-    print("\n========== FEATURE PREPARATION ==========")
 
-    X = df.drop(columns=[target_column])
-    y = df[target_column]
+# ============================================================
+# TRAIN / TEST SPLIT
+# ============================================================
 
-    # Keep numeric features for the baseline model
-    X = X.select_dtypes(include="number")
+if task == "classification":
 
-    if X.empty:
-        raise ValueError("No numeric features available for training.")
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
+    )
 
-    print("Features used:")
-    print(list(X.columns))
-
-    print("\nTarget:")
-    print(target_column)
-
-    # =========================
-    # 5. TRAIN / TEST SPLIT
-    # =========================
+else:
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -89,115 +97,178 @@ def train_model(dataset_path, target_column="Price"):
         random_state=42
     )
 
-    print("\n========== DATA SPLIT ==========")
-    print("Training samples:", len(X_train))
-    print("Testing samples :", len(X_test))
 
-    # =========================
-    # 6. FEATURE SCALING
-    # =========================
+print("\n========== DATA SPLIT ==========")
+print("Training rows:", X_train.shape[0])
+print("Testing rows:", X_test.shape[0])
 
-    scaler = StandardScaler()
 
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+# ============================================================
+# NUMERICAL FEATURE SCALING
+# ============================================================
 
-    # =========================
-    # 7. MODEL TRAINING
-    # =========================
+numeric_columns = X_train.select_dtypes(
+    include="number"
+).columns.tolist()
 
-    print("\n========== MODEL TRAINING ==========")
+scaler = StandardScaler()
 
-    model = LinearRegression()
+X_train_scaled = X_train.copy()
+X_test_scaled = X_test.copy()
 
-    model.fit(X_train_scaled, y_train)
+if numeric_columns:
 
-    print("Linear Regression model trained successfully.")
-
-    # =========================
-    # 8. PREDICTION
-    # =========================
-
-    y_pred = model.predict(X_test_scaled)
-
-    # =========================
-    # 9. MODEL EVALUATION
-    # =========================
-
-    mse = mean_squared_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-
-    print("\n========== MODEL EVALUATION ==========")
-
-    print(f"Mean Squared Error : {mse:.2f}")
-    print(f"R² Score           : {r2:.4f}")
-
-    print("\nFirst 5 predictions:")
-
-    for actual, predicted in zip(
-        y_test.iloc[:5],
-        y_pred[:5]
-    ):
-        print(
-            f"Actual: {actual:.2f} | "
-            f"Predicted: {predicted:.2f}"
-        )
-
-    # =========================
-    # 10. SAVE MODEL
-    # =========================
-
-    print("\n========== SAVING MODEL ==========")
-
-    os.makedirs(MODEL_DIR, exist_ok=True)
-
-    model_path = os.path.join(
-        MODEL_DIR,
-        "linear_regression.pkl"
+    X_train_scaled[numeric_columns] = scaler.fit_transform(
+        X_train[numeric_columns]
     )
 
-    scaler_path = os.path.join(
+    X_test_scaled[numeric_columns] = scaler.transform(
+        X_test[numeric_columns]
+    )
+
+
+# ============================================================
+# MODEL COMPARISON
+# ============================================================
+
+print("\n========== MODEL COMPARISON ==========")
+
+results = compare_models(
+    X_train_scaled,
+    y_train,
+    task,
+    cv=5
+)
+
+print(
+    results.to_string(index=False)
+)
+
+
+# ============================================================
+# SELECT BEST MODEL
+# ============================================================
+
+best_model_name = results.iloc[0]["model"]
+
+models = get_models(task)
+
+best_model = models[best_model_name]
+
+
+print("\n========== SELECTED MODEL ==========")
+print("Model:", best_model_name)
+
+
+# ============================================================
+# TRAIN SELECTED MODEL
+# ============================================================
+
+best_model.fit(
+    X_train_scaled,
+    y_train
+)
+
+
+# ============================================================
+# FINAL TEST SET PREDICTION
+# ============================================================
+
+y_pred = best_model.predict(
+    X_test_scaled
+)
+
+
+# ============================================================
+# FINAL EVALUATION
+# ============================================================
+
+print("\n========== FINAL TEST EVALUATION ==========")
+
+if task == "regression":
+
+    metrics = evaluate_regression(
+        y_test,
+        y_pred
+    )
+
+else:
+
+    y_probability = None
+
+    if hasattr(best_model, "predict_proba"):
+
+        y_probability = best_model.predict_proba(
+            X_test_scaled
+        )
+
+    metrics = evaluate_classification(
+        y_test,
+        y_pred,
+        y_probability
+    )
+
+
+for metric, value in metrics.items():
+
+    if value is None:
+
+        print(f"{metric}: N/A")
+
+    else:
+
+        print(f"{metric}: {value:.4f}")
+
+
+# ============================================================
+# SAVE MODEL
+# ============================================================
+
+os.makedirs(
+    MODEL_DIR,
+    exist_ok=True
+)
+
+joblib.dump(
+    best_model,
+    os.path.join(
+        MODEL_DIR,
+        "model.pkl"
+    )
+)
+
+joblib.dump(
+    scaler,
+    os.path.join(
         MODEL_DIR,
         "scaler.pkl"
     )
+)
 
-    features_path = os.path.join(
+joblib.dump(
+    numeric_columns,
+    os.path.join(
         MODEL_DIR,
         "features.pkl"
     )
+)
 
-    joblib.dump(model, model_path)
-    joblib.dump(scaler, scaler_path)
-    joblib.dump(list(X.columns), features_path)
-
-    print(f"Model saved to: {model_path}")
-    print(f"Scaler saved to: {scaler_path}")
-    print(f"Features saved to: {features_path}")
-
-    # =========================
-    # 11. RETURN RESULTS
-    # =========================
-
-    return {
-        "model": "Linear Regression",
-        "target": target_column,
-        "features": list(X.columns),
-        "mse": mse,
-        "r2": r2,
-        "training_samples": len(X_train),
-        "testing_samples": len(X_test)
-    }
-
-
-if __name__ == "__main__":
-
-    dataset_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "datasets",
-        "house_price.csv"
+joblib.dump(
+    {
+        "target_column": TARGET_COLUMN,
+        "task": task,
+        "model_name": best_model_name,
+        "metrics": metrics
+    },
+    os.path.join(
+        MODEL_DIR,
+        "metadata.pkl"
     )
+)
 
-    results = train_model(dataset_path)
 
-    print("\n========== TRAINING COMPLETE ==========")
-    print(results)
+print("\n========== MODEL SAVED ==========")
+print("Model:", best_model_name)
+print("Task:", task)
+print("Target:", TARGET_COLUMN)
+print("Model directory:", MODEL_DIR)
