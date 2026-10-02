@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import joblib
 
@@ -5,84 +6,198 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
-# Load the dataset
 
-def train_model(dataset_path):
-        df = pd.read_csv(dataset_path)
-        print("========== DATA INSPECTION ==========")
-        print("========== DATASET ==========")
-        print(df.head())
+from utils import clean_dataset
 
-        print("\n========== INFO ==========")
-        df.info()
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "models"
+)
 
-        print("\n========== DESCRIPTION ==========")
-        print(df.describe())
-        print(df.shape)
-        print("========== DATA PREPROCESSING ==========")
-        print(df.isnull().sum())
-        print("Duplicate rows:", df.duplicated().sum())
-        
-        print("========== MODEL TRAINING ==========")
-        # Separate features and target
 
-        X = df.drop("Price", axis=1)
-        y = df["Price"]
+def train_model(dataset_path, target_column="Price"):
+    """
+    Train a Linear Regression model on a CSV dataset.
+    """
 
-        print("Features:")
-        print(X.head())
+    # =========================
+    # 1. LOAD DATASET
+    # =========================
 
-        print("\nTarget:")
-        print(y.head())
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            test_size=0.2,
-            random_state=42
+    print("\n========== LOADING DATASET ==========")
+
+    df = pd.read_csv(dataset_path)
+
+    print(f"Dataset shape: {df.shape}")
+    print("\nFirst 5 rows:")
+    print(df.head())
+
+    # =========================
+    # 2. DATA CLEANING
+    # =========================
+
+    print("\n========== DATA CLEANING ==========")
+
+    print("Missing values before cleaning:")
+    print(df.isnull().sum())
+
+    print("\nDuplicate rows:", df.duplicated().sum())
+
+    df = clean_dataset(df)
+
+    print("\nDataset shape after cleaning:", df.shape)
+
+    # =========================
+    # 3. VALIDATE TARGET
+    # =========================
+
+    if target_column not in df.columns:
+        raise ValueError(
+            f"Target column '{target_column}' not found.\n"
+            f"Available columns: {list(df.columns)}"
         )
-        # Scale the features
-        scaler = StandardScaler()
 
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
-        print("Training Features:", X_train.shape)
-        print("Testing Features :", X_test.shape)
+    # =========================
+    # 4. PREPARE FEATURES
+    # =========================
 
-        print("Training Target  :", y_train.shape)
-        print("Testing Target   :", y_test.shape)
+    print("\n========== FEATURE PREPARATION ==========")
 
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-        # Predict on test data
-        y_pred = model.predict(X_test)
-        
-        print("========== MODEL EVALUATION ==========")
-        print("First 5 Predictions:")
-        print(y_pred[:5])
+    X = df.drop(columns=[target_column])
+    y = df[target_column]
 
-        print("\nFirst 5 Actual Values:")
-        print(y_test.iloc[:5].values)
-        for actual, predicted in zip(y_test.iloc[:5], y_pred[:5]):
-            print(f"Actual: {actual:.2f} | Predicted: {predicted:.2f}")
-        mse = mean_squared_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-        metrics = {
-            "model": "Linear Regression",
-            "mse": mse,
-            "r2": r2
-        }
+    # Keep numeric features for the baseline model
+    X = X.select_dtypes(include="number")
 
-        print("\n========== MODEL METRICS ==========")
-        print(f"Model : {metrics['model']}")
-        print(f"MSE   : {metrics['mse']:.2f}")
-        print(f"R²    : {metrics['r2']:.4f}") 
-        print("Coefficients:", model.coef_)
-        print("Intercept:", model.intercept_)
-        
-        print("========== SAVING MODEL ==========")
-        joblib.dump(model, "../models/linear_regression.pkl")
-        joblib.dump(scaler, "../models/scaler.pkl")
+    if X.empty:
+        raise ValueError("No numeric features available for training.")
 
-        print("Model and scaler saved successfully!")
+    print("Features used:")
+    print(list(X.columns))
+
+    print("\nTarget:")
+    print(target_column)
+
+    # =========================
+    # 5. TRAIN / TEST SPLIT
+    # =========================
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42
+    )
+
+    print("\n========== DATA SPLIT ==========")
+    print("Training samples:", len(X_train))
+    print("Testing samples :", len(X_test))
+
+    # =========================
+    # 6. FEATURE SCALING
+    # =========================
+
+    scaler = StandardScaler()
+
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # =========================
+    # 7. MODEL TRAINING
+    # =========================
+
+    print("\n========== MODEL TRAINING ==========")
+
+    model = LinearRegression()
+
+    model.fit(X_train_scaled, y_train)
+
+    print("Linear Regression model trained successfully.")
+
+    # =========================
+    # 8. PREDICTION
+    # =========================
+
+    y_pred = model.predict(X_test_scaled)
+
+    # =========================
+    # 9. MODEL EVALUATION
+    # =========================
+
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    print("\n========== MODEL EVALUATION ==========")
+
+    print(f"Mean Squared Error : {mse:.2f}")
+    print(f"R² Score           : {r2:.4f}")
+
+    print("\nFirst 5 predictions:")
+
+    for actual, predicted in zip(
+        y_test.iloc[:5],
+        y_pred[:5]
+    ):
+        print(
+            f"Actual: {actual:.2f} | "
+            f"Predicted: {predicted:.2f}"
+        )
+
+    # =========================
+    # 10. SAVE MODEL
+    # =========================
+
+    print("\n========== SAVING MODEL ==========")
+
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    model_path = os.path.join(
+        MODEL_DIR,
+        "linear_regression.pkl"
+    )
+
+    scaler_path = os.path.join(
+        MODEL_DIR,
+        "scaler.pkl"
+    )
+
+    features_path = os.path.join(
+        MODEL_DIR,
+        "features.pkl"
+    )
+
+    joblib.dump(model, model_path)
+    joblib.dump(scaler, scaler_path)
+    joblib.dump(list(X.columns), features_path)
+
+    print(f"Model saved to: {model_path}")
+    print(f"Scaler saved to: {scaler_path}")
+    print(f"Features saved to: {features_path}")
+
+    # =========================
+    # 11. RETURN RESULTS
+    # =========================
+
+    return {
+        "model": "Linear Regression",
+        "target": target_column,
+        "features": list(X.columns),
+        "mse": mse,
+        "r2": r2,
+        "training_samples": len(X_train),
+        "testing_samples": len(X_test)
+    }
+
+
 if __name__ == "__main__":
-    train_model("../datasets/house_price.csv")
+
+    dataset_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "datasets",
+        "house_price.csv"
+    )
+
+    results = train_model(dataset_path)
+
+    print("\n========== TRAINING COMPLETE ==========")
+    print(results)
