@@ -15,7 +15,21 @@ BACKEND_PATH = os.path.join(
 sys.path.append(BACKEND_PATH)
 
 
-from predict import predict_price
+from predict import (
+    load_saved_model,
+    get_expected_features,
+    predict_dataset
+)
+
+
+# ============================================================
+# MODEL PATH
+# ============================================================
+
+MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "models"
+)
 
 
 # ============================================================
@@ -36,90 +50,158 @@ st.set_page_config(
 st.title("🤖 Prediction")
 
 st.write(
-    "Enter the property details below to generate "
-    "a house-price prediction using the trained "
-    "InsightAI model."
+    "Upload a dataset containing the features required by "
+    "the trained InsightAI model to generate predictions."
 )
 
 
 # ============================================================
-# INPUT SECTION
+# MODEL INFORMATION
 # ============================================================
 
-st.subheader("Property Details")
+try:
 
+    pipeline, metadata = load_saved_model(
+        MODEL_PATH
+    )
+
+    expected_features = get_expected_features(
+        pipeline
+    )
+
+except Exception as error:
+
+    st.error(
+        f"Unable to load the saved model: {error}"
+    )
+
+    st.stop()
+
+
+# ============================================================
+# MODEL DETAILS
+# ============================================================
+
+st.subheader("Model Information")
 
 col1, col2, col3 = st.columns(3)
 
-
 with col1:
-
-    area = st.number_input(
-        "Area",
-        min_value=1,
-        value=1500
+    st.metric(
+        "Task",
+        metadata["task"].title()
     )
-
-    bedrooms = st.number_input(
-        "Bedrooms",
-        min_value=1,
-        value=3,
-        step=1
-    )
-
 
 with col2:
-
-    bathrooms = st.number_input(
-        "Bathrooms",
-        min_value=1,
-        value=2,
-        step=1
+    st.metric(
+        "Model",
+        metadata["model_name"]
     )
-
-    stories = st.number_input(
-        "Stories",
-        min_value=1,
-        value=2,
-        step=1
-    )
-
 
 with col3:
-
-    parking = st.number_input(
-        "Parking",
-        min_value=0,
-        value=1,
-        step=1
+    st.metric(
+        "Target",
+        metadata["target_column"]
     )
 
-    age = st.number_input(
-        "Age",
-        min_value=0,
-        value=5,
-        step=1
+
+# ============================================================
+# REQUIRED FEATURES
+# ============================================================
+
+with st.expander("Required Features"):
+
+    st.write(
+        "The uploaded dataset must contain the following "
+        "features:"
     )
+
+    for feature in expected_features:
+        st.write(f"- {feature}")
+
+
+# ============================================================
+# DATASET UPLOAD
+# ============================================================
+
+st.subheader("Upload Prediction Dataset")
+
+uploaded_file = st.file_uploader(
+    "Upload a CSV file",
+    type=["csv"]
+)
 
 
 # ============================================================
 # PREDICTION
 # ============================================================
 
-if st.button(
-    "Predict Price",
-    type="primary"
-):
+if uploaded_file is not None:
 
-    prediction = predict_price(
-        area=area,
-        bedrooms=bedrooms,
-        bathrooms=bathrooms,
-        stories=stories,
-        parking=parking,
-        age=age
+    import pandas as pd
+
+    prediction_data = pd.read_csv(
+        uploaded_file
     )
 
-    st.success(
-        f"Predicted Price: ₹{prediction:,.2f}"
+    st.write("### Uploaded Data")
+
+    st.dataframe(
+        prediction_data,
+        use_container_width=True
     )
+
+    missing_features = [
+        column
+        for column in expected_features
+        if column not in prediction_data.columns
+    ]
+
+    if missing_features:
+
+        st.error(
+            "Missing required features: "
+            + ", ".join(missing_features)
+        )
+
+    else:
+
+        if st.button(
+            "Generate Predictions",
+            type="primary"
+        ):
+
+            try:
+
+                result, _ = predict_dataset(
+                    prediction_data,
+                    MODEL_PATH
+                )
+
+                st.success(
+                    "Predictions generated successfully."
+                )
+
+                st.write("### Prediction Results")
+
+                st.dataframe(
+                    result,
+                    use_container_width=True
+                )
+
+                csv_data = result.to_csv(
+                    index=False
+                ).encode("utf-8")
+
+                st.download_button(
+                    label="Download Predictions",
+                    data=csv_data,
+                    file_name="insightai_predictions.csv",
+                    mime="text/csv"
+                )
+
+            except Exception as error:
+
+                st.error(
+                    f"Prediction failed: {error}"
+                )
