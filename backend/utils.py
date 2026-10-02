@@ -240,3 +240,23 @@ def transform_numeric_features(df, skew_threshold=1.0):
         })
 
     return df, pd.DataFrame(report)
+def generate_dataset_profile(df):
+    """
+    Generate a complete dataset profile.
+
+    Returns:
+        Dictionary containing dataset-level,
+        column-level, and outlier information.
+    """
+
+    summary = get_dataset_summary(df)
+
+    column_profile = get_column_profile(df)
+
+    outliers = detect_outliers(df)
+
+    return {
+        "summary": summary,
+        "column_profile": column_profile,
+        "outliers": outliers
+    }
