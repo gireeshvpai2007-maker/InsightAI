@@ -18,6 +18,7 @@ sys.path.append(BACKEND_PATH)
 
 from utils import generate_dataset_profile
 from model_selection import detect_task
+from training import train_dataset
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -171,7 +172,6 @@ if uploaded_file is not None:
             df.columns
         )
 
-
         # ----------------------------------------------------
         # Task Detection
         # ----------------------------------------------------
@@ -199,6 +199,112 @@ if uploaded_file is not None:
                     f"Target: **{target_column}**  \n"
                     "Detected task: **Classification**"
                 )
+
+
+        # ----------------------------------------------------
+        # Model Training
+        # ----------------------------------------------------
+
+        st.subheader("🚀 Model Training")
+
+        if st.button(
+            "Train InsightAI Model",
+            type="primary"
+        ):
+
+            with st.spinner(
+                "Training and evaluating models..."
+            ):
+
+                result = train_dataset(
+                    df,
+                    target_column
+                )
+
+
+            st.success(
+                "Model training completed successfully."
+            )
+
+
+            # ------------------------------------------------
+            # Training Summary
+            # ------------------------------------------------
+
+            st.subheader("🧠 Training Summary")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+
+                st.metric(
+                    "Task",
+                    result["task"].title()
+                )
+
+            with col2:
+
+                st.metric(
+                    "Selected Model",
+                    result["model_name"]
+                )
+
+            with col3:
+
+                st.metric(
+                    "Training Rows",
+                    result["train_size"]
+                )
+
+
+            # ------------------------------------------------
+            # Model Comparison
+            # ------------------------------------------------
+
+            st.subheader(
+                "📊 Model Comparison"
+            )
+
+            st.dataframe(
+                result["model_comparison"],
+                use_container_width=True
+            )
+
+
+            # ------------------------------------------------
+            # Evaluation Metrics
+            # ------------------------------------------------
+
+            st.subheader(
+                "📈 Model Evaluation"
+            )
+
+            metrics = result["metrics"]
+
+            metric_columns = st.columns(
+                len(metrics)
+            )
+
+            for column, (metric, value) in zip(
+                metric_columns,
+                metrics.items()
+            ):
+
+                with column:
+
+                    if value is None:
+
+                        st.metric(
+                            metric,
+                            "N/A"
+                        )
+
+                    else:
+
+                        st.metric(
+                            metric,
+                            f"{value:.4f}"
+                        )
 
 
     except Exception as error:
