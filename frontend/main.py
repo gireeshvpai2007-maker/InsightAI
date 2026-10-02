@@ -17,7 +17,7 @@ sys.path.append(BACKEND_PATH)
 
 
 from utils import generate_dataset_profile
-
+from model_selection import detect_task
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -139,7 +139,6 @@ if uploaded_file is not None:
             use_container_width=True
         )
 
-
         # ----------------------------------------------------
         # Outlier Analysis
         # ----------------------------------------------------
@@ -159,6 +158,47 @@ if uploaded_file is not None:
                 outliers,
                 use_container_width=True
             )
+
+
+        # ----------------------------------------------------
+        # Target Column Selection
+        # ----------------------------------------------------
+
+        st.subheader("🎯 Target Column")
+
+        target_column = st.selectbox(
+            "Select the column you want InsightAI to analyze/predict",
+            df.columns
+        )
+
+
+        # ----------------------------------------------------
+        # Task Detection
+        # ----------------------------------------------------
+
+        if target_column:
+
+            target = df[target_column]
+
+            task = detect_task(target)
+
+            st.subheader(
+                "🤖 Detected Machine Learning Task"
+            )
+
+            if task == "regression":
+
+                st.info(
+                    f"Target: **{target_column}**  \n"
+                    "Detected task: **Regression**"
+                )
+
+            else:
+
+                st.info(
+                    f"Target: **{target_column}**  \n"
+                    "Detected task: **Classification**"
+                )
 
 
     except Exception as error:
