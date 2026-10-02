@@ -1,7 +1,11 @@
 import os
 
 from utils import load_dataset
-from feature_engineering import create_ratio_features
+from feature_engineering import (
+    create_ratio_features,
+    evaluate_features,
+    select_features
+)
 
 
 dataset_path = os.path.join(
@@ -23,7 +27,31 @@ transformed_df, report = create_ratio_features(
     target_column="Price",
     max_features=10
 )
+original_columns = df.columns.tolist()
 
+
+evaluation = evaluate_features(
+    transformed_df,
+    target_column="Price",
+    original_columns=original_columns
+)
+selected_features = select_features(
+    evaluation,
+    min_correlation=0.25
+)
+
+
+print("\n========== SELECTED FEATURES ==========")
+
+print(
+    selected_features.to_string(index=False)
+)
+
+print("\n========== FEATURE EVALUATION ==========")
+
+print(
+    evaluation.to_string(index=False)
+)
 
 print("\n========== FEATURE ENGINEERING REPORT ==========")
 

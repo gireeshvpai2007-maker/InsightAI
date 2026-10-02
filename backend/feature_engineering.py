@@ -77,3 +77,97 @@ def create_ratio_features(
             break
 
     return df, pd.DataFrame(report)
+def evaluate_features(
+    df,
+    target_column,
+    original_columns=None
+):
+    """
+    Evaluate numerical features based on absolute
+    Pearson correlation with the target.
+
+    Parameters:
+        df: DataFrame containing features and target
+        target_column: Target column
+        original_columns: Original columns before
+                          feature engineering
+
+    Returns:
+        DataFrame containing feature correlations.
+    """
+
+    if target_column not in df.columns:
+        raise ValueError(
+            f"Target column '{target_column}' not found."
+        )
+
+    numeric_columns = df.select_dtypes(
+        include="number"
+    ).columns.tolist()
+
+    numeric_columns.remove(target_column)
+
+    # Only evaluate newly generated features
+    if original_columns is not None:
+
+        numeric_columns = [
+            column
+            for column in numeric_columns
+            if column not in original_columns
+        ]
+
+    evaluation = []
+
+    for column in numeric_columns:
+
+        correlation = df[column].corr(
+            df[target_column]
+        )
+
+        if pd.notna(correlation):
+
+            evaluation.append({
+                "feature": column,
+                "correlation": float(correlation),
+                "absolute_correlation": float(
+                    abs(correlation)
+                )
+            })
+
+    result = pd.DataFrame(evaluation)
+
+    if not result.empty:
+
+        result = result.sort_values(
+            "absolute_correlation",
+            ascending=False
+        ).reset_index(drop=True)
+
+    return result
+def select_features(
+    evaluation,
+    min_correlation=0.25
+):
+    """
+    Select generated features based on absolute
+    correlation with the target.
+
+    Parameters:
+        evaluation: Feature evaluation DataFrame
+        min_correlation: Minimum absolute correlation required
+
+    Returns:
+        DataFrame containing selected features.
+    """
+
+    if evaluation.empty:
+        return evaluation.copy()
+
+    selected = evaluation[
+        evaluation["absolute_correlation"]
+        >= min_correlation
+    ].copy()
+
+    selected = selected.reset_index(drop=True)
+
+    return selected
