@@ -1,3 +1,4 @@
+import os
 import joblib
 
 from sklearn.model_selection import train_test_split
@@ -205,4 +206,69 @@ def train_dataset(
         "metrics": metrics,
         "test_size": len(X_test),
         "train_size": len(X_train)
+    }
+
+def save_training_result(
+    result,
+    model_dir
+):
+    """
+    Save a trained InsightAI pipeline and its metadata.
+
+    Parameters:
+        result: Result dictionary returned by train_dataset()
+        model_dir: Directory where model artifacts are stored
+
+    Returns:
+        Dictionary containing saved artifact paths.
+    """
+
+    os.makedirs(
+        model_dir,
+        exist_ok=True
+    )
+
+    # ========================================================
+    # MODEL PIPELINE
+    # ========================================================
+
+    pipeline_path = os.path.join(
+        model_dir,
+        "model_pipeline.pkl"
+    )
+
+    joblib.dump(
+        result["pipeline"],
+        pipeline_path
+    )
+
+
+    # ========================================================
+    # METADATA
+    # ========================================================
+
+    metadata = {
+        "target_column": result["target_column"],
+        "task": result["task"],
+        "model_name": result["model_name"],
+        "metrics": result["metrics"],
+        "train_size": result["train_size"],
+        "test_size": result["test_size"]
+    }
+
+
+    metadata_path = os.path.join(
+        model_dir,
+        "metadata.pkl"
+    )
+
+    joblib.dump(
+        metadata,
+        metadata_path
+    )
+
+
+    return {
+        "pipeline_path": pipeline_path,
+        "metadata_path": metadata_path
     }
