@@ -13,12 +13,20 @@ BACKEND_PATH = os.path.join(
     "backend"
 )
 
+MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "models"
+)
+
 sys.path.append(BACKEND_PATH)
 
 
 from utils import generate_dataset_profile
 from model_selection import detect_task
-from training import train_dataset
+from training import (
+    train_dataset,
+    save_training_result
+)
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -220,6 +228,11 @@ if uploaded_file is not None:
                     df,
                     target_column
                 )
+                
+                save_paths = save_training_result(
+                      result,
+                      MODEL_PATH
+               )
 
 
             st.success(
