@@ -4,53 +4,114 @@ import pandas as pd
 
 
 # ============================================================
-# MODEL PATH
+# LOAD SAVED MODEL
 # ============================================================
 
-MODEL_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "models",
-    "model_pipeline.pkl"
-)
+def load_saved_model(model_dir):
+    """
+    Load the saved InsightAI pipeline and metadata.
+    """
+
+    pipeline_path = os.path.join(
+        model_dir,
+        "model_pipeline.pkl"
+    )
+
+    metadata_path = os.path.join(
+        model_dir,
+        "metadata.pkl"
+    )
+
+    if not os.path.exists(pipeline_path):
+        raise FileNotFoundError(
+            "Saved model pipeline not found."
+        )
+
+    if not os.path.exists(metadata_path):
+        raise FileNotFoundError(
+            "Saved model metadata not found."
+        )
+
+    pipeline = joblib.load(
+        pipeline_path
+    )
+
+    metadata = joblib.load(
+        metadata_path
+    )
+
+    return pipeline, metadata
 
 
 # ============================================================
-# LOAD SAVED PIPELINE
+# EXPECTED FEATURES
 # ============================================================
 
-model_pipeline = joblib.load(
-    MODEL_PATH
-)
+def get_expected_features(pipeline):
+    """
+    Return the feature columns expected by
+    the trained model.
+    """
+
+    if not hasattr(
+        pipeline,
+        "feature_names_in_"
+    ):
+        raise ValueError(
+            "Unable to determine expected input features."
+        )
+
+    return list(
+        pipeline.feature_names_in_
+    )
 
 
 # ============================================================
-# PREDICTION FUNCTION
+# PREDICTION
 # ============================================================
 
-def predict_price(
-    area,
-    bedrooms,
-    bathrooms,
-    stories,
-    parking,
-    age
+def predict_dataset(
+    df,
+    model_dir
 ):
     """
-    Predict house price using the saved
-    InsightAI machine-learning pipeline.
+    Generate predictions for a new dataset.
+
+    The input dataset must contain the feature
+    columns used during model training.
     """
 
-    input_data = pd.DataFrame({
-        "Area": [area],
-        "Bedrooms": [bedrooms],
-        "Bathrooms": [bathrooms],
-        "Stories": [stories],
-        "Parking": [parking],
-        "Age": [age]
-    })
+    pipeline, metadata = load_saved_model(
+        model_dir
+    )
 
-    prediction = model_pipeline.predict(
+    expected_features = get_expected_features(
+        pipeline
+    )
+
+    missing_features = [
+        column
+        for column in expected_features
+        if column not in df.columns
+    ]
+
+    if missing_features:
+
+        raise ValueError(
+            "Missing required features: "
+            + ", ".join(missing_features)
+        )
+
+    input_data = df[
+        expected_features
+    ]
+
+    predictions = pipeline.predict(
         input_data
     )
 
-    return float(prediction[0])
+    result = df.copy()
+
+    result["prediction"] = predictions
+
+    return result, metadata
