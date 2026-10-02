@@ -2,14 +2,18 @@ import os
 import joblib
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 
 from utils import load_dataset
+
 from model_selection import (
     detect_task,
     compare_models,
     get_models
 )
+
+from preprocessing import create_preprocessor
+
 from evaluation import (
     evaluate_regression,
     evaluate_classification
@@ -46,7 +50,6 @@ print("Columns:", df.shape[1])
 
 
 if TARGET_COLUMN not in df.columns:
-
     raise ValueError(
         f"Target column '{TARGET_COLUMN}' not found."
     )
@@ -104,37 +107,13 @@ print("Testing rows:", X_test.shape[0])
 
 
 # ============================================================
-# NUMERICAL FEATURE SCALING
-# ============================================================
-
-numeric_columns = X_train.select_dtypes(
-    include="number"
-).columns.tolist()
-
-scaler = StandardScaler()
-
-X_train_scaled = X_train.copy()
-X_test_scaled = X_test.copy()
-
-if numeric_columns:
-
-    X_train_scaled[numeric_columns] = scaler.fit_transform(
-        X_train[numeric_columns]
-    )
-
-    X_test_scaled[numeric_columns] = scaler.transform(
-        X_test[numeric_columns]
-    )
-
-
-# ============================================================
 # MODEL COMPARISON
 # ============================================================
 
 print("\n========== MODEL COMPARISON ==========")
 
 results = compare_models(
-    X_train_scaled,
+    X_train,
     y_train,
     task,
     cv=5
@@ -155,27 +134,52 @@ models = get_models(task)
 
 best_model = models[best_model_name]
 
-
 print("\n========== SELECTED MODEL ==========")
 print("Model:", best_model_name)
 
 
 # ============================================================
-# TRAIN SELECTED MODEL
+# CREATE FINAL PIPELINE
 # ============================================================
 
-best_model.fit(
-    X_train_scaled,
+preprocessor = create_preprocessor(
+    X_train
+)
+
+model_pipeline = Pipeline(
+    steps=[
+        (
+            "preprocessor",
+            preprocessor
+        ),
+        (
+            "model",
+            best_model
+        )
+    ]
+)
+
+
+# ============================================================
+# TRAIN FINAL PIPELINE
+# ============================================================
+
+print("\n========== TRAINING ==========")
+
+model_pipeline.fit(
+    X_train,
     y_train
 )
+
+print("Training completed.")
 
 
 # ============================================================
 # FINAL TEST SET PREDICTION
 # ============================================================
 
-y_pred = best_model.predict(
-    X_test_scaled
+y_pred = model_pipeline.predict(
+    X_test
 )
 
 
@@ -196,10 +200,15 @@ else:
 
     y_probability = None
 
-    if hasattr(best_model, "predict_proba"):
+    if hasattr(
+        model_pipeline,
+        "predict_proba"
+    ):
 
-        y_probability = best_model.predict_proba(
-            X_test_scaled
+        y_probability = (
+            model_pipeline.predict_proba(
+                X_test
+            )
         )
 
     metrics = evaluate_classification(
@@ -213,15 +222,19 @@ for metric, value in metrics.items():
 
     if value is None:
 
-        print(f"{metric}: N/A")
+        print(
+            f"{metric}: N/A"
+        )
 
     else:
 
-        print(f"{metric}: {value:.4f}")
+        print(
+            f"{metric}: {value:.4f}"
+        )
 
 
 # ============================================================
-# SAVE MODEL
+# SAVE COMPLETE PIPELINE
 # ============================================================
 
 os.makedirs(
@@ -229,37 +242,30 @@ os.makedirs(
     exist_ok=True
 )
 
+
 joblib.dump(
-    best_model,
+    model_pipeline,
     os.path.join(
         MODEL_DIR,
-        "model.pkl"
+        "model_pipeline.pkl"
     )
 )
 
-joblib.dump(
-    scaler,
-    os.path.join(
-        MODEL_DIR,
-        "scaler.pkl"
-    )
-)
+
+# ============================================================
+# SAVE METADATA
+# ============================================================
+
+metadata = {
+    "target_column": TARGET_COLUMN,
+    "task": task,
+    "model_name": best_model_name,
+    "metrics": metrics
+}
+
 
 joblib.dump(
-    numeric_columns,
-    os.path.join(
-        MODEL_DIR,
-        "features.pkl"
-    )
-)
-
-joblib.dump(
-    {
-        "target_column": TARGET_COLUMN,
-        "task": task,
-        "model_name": best_model_name,
-        "metrics": metrics
-    },
+    metadata,
     os.path.join(
         MODEL_DIR,
         "metadata.pkl"
@@ -268,7 +274,14 @@ joblib.dump(
 
 
 print("\n========== MODEL SAVED ==========")
+print(
+    "Pipeline:",
+    os.path.join(
+        MODEL_DIR,
+        "model_pipeline.pkl"
+    )
+)
+
 print("Model:", best_model_name)
 print("Task:", task)
 print("Target:", TARGET_COLUMN)
-print("Model directory:", MODEL_DIR)
